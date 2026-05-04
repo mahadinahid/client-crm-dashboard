@@ -4284,8 +4284,62 @@ function clearBatchFilter() {
   renderClients();
 }
 
+// ── Reconstruct missing batch records from client data ────────────────────────
+// Called on startup and after any Supabase sync. Because importBatches is
+// localStorage-only, it can disappear (cache clear, different device, etc.)
+// while the clients themselves still carry their importBatch IDs. This function
+// recovers any orphaned batches so history is never permanently lost.
+function rebuildMissingBatches() {
+  const knownIds = new Set(importBatches.map(b => b.id));
+  const groups   = {};
+
+  clients.forEach(c => {
+    if (!c.importBatch) return;
+    if (knownIds.has(c.importBatch)) return; // already recorded
+    if (!groups[c.importBatch]) {
+      // Extract date/time from batch ID format: batch_YYYYMMDD_HHMM_SEQ
+      let date = '?', time = '??:??';
+      const m = c.importBatch.match(/^batch_(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})/);
+      if (m) {
+        date = `${m[1]}-${m[2]}-${m[3]}`;
+        time = `${m[4]}:${m[5]}`;
+      } else if (c.importedAt) {
+        const d = new Date(c.importedAt);
+        date = d.toISOString().split('T')[0];
+        time = d.toTimeString().slice(0, 5);
+      } else if (c.addedAt) {
+        date = c.addedAt;
+      }
+      groups[c.importBatch] = {
+        id:        c.importBatch,
+        date,
+        time,
+        fileName:  '(recovered — original filename not saved)',
+        added:     0,
+        updated:   0,
+        skipped:   0,
+        totalRows: 0,
+        recovered: true,
+      };
+    }
+    groups[c.importBatch].added++;
+  });
+
+  const newBatches = Object.values(groups);
+  if (!newBatches.length) return; // nothing to recover
+
+  importBatches.push(...newBatches);
+  // Sort newest first (batch IDs are lexicographically ordered by date)
+  importBatches.sort((a, b) => b.id.localeCompare(a.id));
+  save();
+  populateBatchFilter();
+  const n = newBatches.length;
+  toast(`🔁 Recovered ${n} missing import batch${n > 1 ? 'es' : ''} from client history`, 'success');
+}
+
 // Render the Import Batches section
 function renderImportBatches() {
+  rebuildMissingBatches(); // always reconcile before rendering
   const grid  = document.getElementById('batch-grid');
   const empty = document.getElementById('batch-empty');
   const stats = document.getElementById('batch-summary-stats');
@@ -4321,7 +4375,7 @@ function renderImportBatches() {
     return `<div class="batch-history-card${isActive?' active-filter':''}" style="border-color:${clr.border};">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:10px;">
         <div>
-          <div style="font-size:13px;font-weight:700;color:${clr.color};">📦 ${b.date} at ${b.time}</div>
+          <div style="font-size:13px;font-weight:700;color:${clr.color};">📦 ${b.date} at ${b.time}${b.recovered ? ' <span style="font-size:10px;background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:8px;font-weight:700;">🔁 Recovered</span>' : ''}</div>
           <div style="font-size:12px;color:var(--gray-500);margin-top:2px;word-break:break-all;">📄 ${esc(b.fileName)}</div>
         </div>
         <span class="batch-tag" style="background:${clr.bg};color:${clr.color};">#${importBatches.length - i}</span>
@@ -7198,6 +7252,7 @@ async function sbLoad() {
     if (cRows && cRows.length) {
       clients = cRows.map(r => r.data);
       localStorage.setItem('crm_clients', JSON.stringify(clients));
+      rebuildMissingBatches(); // recover any batch history lost when localStorage was cleared
     }
     if (sRows && sRows.length) {
       suppliers = sRows.map(r => r.data);
@@ -7325,6 +7380,7 @@ async function initSupabase() {
 }
 
 // ==================== INIT ====================
+rebuildMissingBatches(); // recover any import history orphaned from localStorage clear
 renderDashboard();
 populateBatchFilter();
 updateSidebarStats();
