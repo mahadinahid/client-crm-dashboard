@@ -237,12 +237,16 @@
 
   /* Kanban */
   .kanban-board { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; overflow-x: auto; min-width: 900px; }
-  .kanban-col { background: var(--gray-100); border-radius: 10px; padding: 12px; min-height: 200px; }
+  .kanban-col { background: var(--gray-100); border-radius: 10px; padding: 12px; min-height: 200px; transition: background .15s, box-shadow .15s; }
+  .kanban-col.drag-over { background: #dbeafe; box-shadow: inset 0 0 0 2.5px #6366f1; }
   .kanban-col-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
   .kanban-col-title { font-size: 13px; font-weight: 700; color: var(--gray-700); }
   .kanban-count { background: var(--gray-300); color: var(--gray-700); border-radius: 20px; padding: 2px 8px; font-size: 11px; font-weight: 700; }
-  .kanban-card { background: #fff; border-radius: 8px; padding: 10px 12px; box-shadow: var(--shadow); margin-bottom: 8px; cursor: pointer; transition: box-shadow .15s; }
+  .kanban-card { background: #fff; border-radius: 8px; padding: 10px 12px; box-shadow: var(--shadow); margin-bottom: 8px; cursor: grab; transition: box-shadow .15s, opacity .15s, transform .15s; user-select: none; }
   .kanban-card:hover { box-shadow: var(--shadow-md); }
+  .kanban-card:active { cursor: grabbing; }
+  .kanban-card.dragging { opacity: 0.35; transform: scale(0.96); box-shadow: none; cursor: grabbing; }
+  .kanban-drop-hint { border: 2px dashed #a5b4fc; border-radius: 8px; height: 56px; margin-bottom: 8px; display: flex; align-items: center; justify-content: center; font-size: 11px; color: #6366f1; font-weight: 600; }
   .kanban-card h4 { font-size: 13px; font-weight: 600; color: var(--gray-900); margin-bottom: 4px; }
   .kanban-card p { font-size: 11px; color: var(--gray-500); }
   .kanban-card .kc-meta { display: flex; justify-content: space-between; margin-top: 7px; }
@@ -3569,27 +3573,124 @@ function toggleSrcBreakdownDetail(src) {
 }
 
 // ==================== RENDER KANBAN ====================
+let _kanbanDragId = null;   // id of the client card being dragged
+let _kanbanDragging = false; // true while a drag gesture is active
+
 function renderKanban() {
   const stages = ['New Lead','Contacted','Negotiating','Sample Sent','Order Placed','In Production','Completed'];
   const board = document.getElementById('kanban-board');
   board.style.gridTemplateColumns = `repeat(${stages.length},1fr)`;
+
   board.innerHTML = stages.map(stage => {
-    const cols = clients.filter(c=>c.status===stage);
-    return `<div class="kanban-col">
+    const cols = clients.filter(c => c.status === stage);
+    return `<div class="kanban-col" data-stage="${stage}">
       <div class="kanban-col-header">
         <span class="kanban-col-title">${stage}</span>
-        <span class="kanban-count">${cols.length}</span>
+        <span class="kanban-count" id="kcount-${stage.replace(/\s/g,'_')}">${cols.length}</span>
       </div>
-      ${cols.map(c=>`<div class="kanban-card" onclick="viewClient('${c.id}')">
-        <h4>${esc(c.name)}</h4>
-        <p>${esc(c.company||c.country||'')}</p>
-        <div class="kc-meta">
-          ${getSourceBadge(c.source)}
-          <span style="font-size:11px;font-weight:600;color:var(--primary);">${c.value?'$'+Number(c.value).toLocaleString():''}</span>
-        </div>
-      </div>`).join('')}
+      <div class="kanban-cards">
+        ${cols.map(c => `<div class="kanban-card" draggable="true" data-id="${c.id}">
+          <h4>${esc(c.name)}</h4>
+          <p>${esc(c.company || c.country || '')}</p>
+          <div class="kc-meta">
+            ${getSourceBadge(c.source)}
+            <span style="font-size:11px;font-weight:600;color:var(--primary);">${c.value ? '$' + Number(c.value).toLocaleString() : ''}</span>
+          </div>
+        </div>`).join('')}
+      </div>
     </div>`;
   }).join('');
+
+  // Attach drag-and-drop (only once — flag prevents duplicate listeners)
+  if (!board._dndReady) {
+    board._dndReady = true;
+    _initKanbanDnD(board);
+  }
+}
+
+function _initKanbanDnD(board) {
+  /* ── dragstart: mark which card is moving ── */
+  board.addEventListener('dragstart', e => {
+    const card = e.target.closest('.kanban-card');
+    if (!card) return;
+    _kanbanDragId  = card.dataset.id;
+    _kanbanDragging = true;
+    // slight delay so the ghost image renders before we apply opacity
+    requestAnimationFrame(() => card.classList.add('dragging'));
+    e.dataTransfer.effectAllowed = 'move';
+  });
+
+  /* ── dragend: clean up visual state ── */
+  board.addEventListener('dragend', e => {
+    document.querySelectorAll('.kanban-card.dragging').forEach(c => c.classList.remove('dragging'));
+    document.querySelectorAll('.kanban-col.drag-over').forEach(c => c.classList.remove('drag-over'));
+    document.querySelectorAll('.kanban-drop-hint').forEach(h => h.remove());
+    setTimeout(() => { _kanbanDragging = false; }, 100);
+  });
+
+  /* ── dragover: highlight target column ── */
+  board.addEventListener('dragover', e => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const col = e.target.closest('.kanban-col');
+    if (!col) return;
+    document.querySelectorAll('.kanban-col.drag-over').forEach(c => {
+      if (c !== col) c.classList.remove('drag-over');
+    });
+    col.classList.add('drag-over');
+    // Show drop hint inside column if not already there
+    const cards = col.querySelector('.kanban-cards');
+    if (cards && !cards.querySelector('.kanban-drop-hint')) {
+      const hint = document.createElement('div');
+      hint.className = 'kanban-drop-hint';
+      hint.textContent = '⬇ Drop here';
+      cards.appendChild(hint);
+    }
+  });
+
+  /* ── dragleave: remove highlight when pointer leaves column ── */
+  board.addEventListener('dragleave', e => {
+    const col = e.target.closest('.kanban-col');
+    if (col && !col.contains(e.relatedTarget)) {
+      col.classList.remove('drag-over');
+      const hint = col.querySelector('.kanban-drop-hint');
+      if (hint) hint.remove();
+    }
+  });
+
+  /* ── drop: move client to new stage ── */
+  board.addEventListener('drop', e => {
+    e.preventDefault();
+    const col = e.target.closest('.kanban-col');
+    if (!col || !_kanbanDragId) return;
+    col.classList.remove('drag-over');
+    const hint = col.querySelector('.kanban-drop-hint');
+    if (hint) hint.remove();
+
+    const newStage = col.dataset.stage;
+    const client   = clients.find(c => c.id === _kanbanDragId);
+    if (client && client.status !== newStage) {
+      const oldStage  = client.status;
+      client.status   = newStage;
+      client.lastContact = new Date().toISOString().split('T')[0];
+      if (!client.followups) client.followups = [];
+      client.followups.push({
+        id: genId(), channel: 'Pipeline', date: client.lastContact,
+        note: `Moved from "${oldStage}" → "${newStage}"`
+      });
+      save();
+      renderKanban();
+      toast(`✅ ${client.name} → ${newStage}`, 'success');
+    }
+    _kanbanDragId = null;
+  });
+
+  /* ── click: open client (only if not a drag gesture) ── */
+  board.addEventListener('click', e => {
+    if (_kanbanDragging) return;
+    const card = e.target.closest('.kanban-card');
+    if (card && card.dataset.id) viewClient(card.dataset.id);
+  });
 }
 
 // ==================== RENDER FOLLOW-UPS ====================
