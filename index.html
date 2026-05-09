@@ -893,9 +893,8 @@
         <select class="filter-select" id="filter-source" onchange="renderClients()">
           <option value="">All Sources</option>
           <option value="Alibaba">Alibaba</option>
-          <option value="Social Media">📱 Social Media (FB/IG/etc.)</option>
+          <option value="Social Media">📱 Social Media</option>
           <option value="Website">Website</option>
-          <option value="WhatsApp">WhatsApp</option>
           <option value="Referral">Referral</option>
           <option value="Trade Show">Trade Show</option>
           <option value="Other">Other</option>
@@ -1480,14 +1479,10 @@ create policy "anon all" on crm_suppliers for all using (true) with check (true)
             <label>Lead Source</label>
             <select id="f-source">
               <option>Alibaba</option>
-              <option>Instagram</option>
-              <option>Facebook</option>
+              <option>Social Media</option>
               <option>Website</option>
-              <option>WhatsApp</option>
               <option>Referral</option>
               <option>Trade Show</option>
-              <option>LinkedIn</option>
-              <option>WeChat</option>
               <option>Other</option>
             </select>
           </div>
@@ -3066,7 +3061,7 @@ function openClientModal(clientId) {
     document.getElementById('f-name').value = c.name || '';
     document.getElementById('f-company').value = c.company || '';
     document.getElementById('f-country').value = c.country || '';
-    document.getElementById('f-source').value = c.source || 'Alibaba';
+    document.getElementById('f-source').value = normalizeSrc(c.source) || 'Alibaba';
     document.getElementById('f-priority').value = c.priority || 'Warm';
     document.getElementById('f-status').value = c.status || 'New Lead';
     document.getElementById('f-whatsapp').value = c.whatsapp || '';
@@ -3087,10 +3082,10 @@ function openClientModal(clientId) {
     document.getElementById('f-shipping-agent').value = c.shippingAgent || '';
     document.getElementById('f-shipping-method').value = c.shippingMethod || '';
     document.getElementById('f-prod-status').value = c.prodStatus || '';
-    document.getElementById('f-ship-date').value = c.shipDate || '';
+    document.getElementById('f-ship-date').value = toDateInput(c.shipDate);
     document.getElementById('f-order-specs').value = c.orderSpecs || '';
-    document.getElementById('f-last-contact').value = c.lastContact || '';
-    document.getElementById('f-next-followup').value = c.nextFollowup || '';
+    document.getElementById('f-last-contact').value = toDateInput(c.lastContact);
+    document.getElementById('f-next-followup').value = toDateInput(c.nextFollowup);
     document.getElementById('f-followup-channel').value = c.followupChannel || '';
     document.getElementById('f-followup-freq').value = c.followupFreq || '';
     document.getElementById('f-notes').value = c.notes || '';
@@ -3812,8 +3807,18 @@ function getPrioBadge(prio) {
 function normalizeSrc(src) {
   if (!src) return 'Other';
   const lower = src.toLowerCase();
-  if (/facebook|^fb$|instagram|^ig$|snapchat|tiktok|twitter|^x $|^x$|linkedin|whatsapp.*social/.test(lower)) return 'Social Media';
+  if (/facebook|^fb$|instagram|^ig$|snapchat|tiktok|twitter|^x$|linkedin|wechat|whatsapp/.test(lower)) return 'Social Media';
   return src;
+}
+
+// Normalize any date string → YYYY-MM-DD for <input type="date">
+function toDateInput(str) {
+  if (!str) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str; // already correct
+  // Handle MM/DD/YYYY or DD/MM/YYYY by trying native Date parse
+  const d = new Date(str);
+  if (!isNaN(d.getTime())) return d.toISOString().split('T')[0];
+  return '';
 }
 
 function getSocialIcon(src) {
