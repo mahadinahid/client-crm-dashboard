@@ -255,6 +255,20 @@
   /* Notification dot */
   .notif-dot { width: 7px; height: 7px; background: var(--danger); border-radius: 50%; display: inline-block; margin-left: 4px; vertical-align: middle; }
 
+  /* ── Priority auto-escalation UI ── */
+  @keyframes hot-pulse { 0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,.35)} 60%{box-shadow:0 0 0 7px rgba(220,38,38,0)} }
+  @keyframes warm-glow { 0%,100%{box-shadow:0 0 0 0 rgba(217,119,6,.25)} 60%{box-shadow:0 0 0 5px rgba(217,119,6,0)} }
+  .escalated-hot  { animation: hot-pulse  1.6s ease-in-out infinite; }
+  .escalated-warm { animation: warm-glow  2.2s ease-in-out infinite; }
+  .overdue-chip { display:inline-flex; align-items:center; gap:3px; border-radius:20px; padding:2px 8px; font-size:10px; font-weight:700; white-space:nowrap; }
+  .overdue-chip.hot  { background:#fee2e2; color:#b91c1c; }
+  .overdue-chip.warm { background:#fef3c7; color:#92400e; }
+  .overdue-chip.due  { background:#ede9fe; color:#5b21b6; }
+  /* ── Mark as Followed Up button ── */
+  .btn-done { background:linear-gradient(135deg,#16a34a,#15803d); color:#fff; border:none; border-radius:8px; padding:5px 12px; font-size:11px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:5px; transition:opacity .15s,transform .1s; white-space:nowrap; }
+  .btn-done:hover { opacity:.87; transform:translateY(-1px); }
+  .btn-done-lg { padding:8px 18px; font-size:13px; border-radius:10px; }
+
   /* Overdue indicator */
   .overdue { color: var(--danger); font-weight: 600; }
 
@@ -2628,6 +2642,7 @@ function save() {
   updateSidebarStats();
   updateNavCount();
   updateBotExportCount();
+  _crmBroadcast('data_changed'); // notify other open tabs
 }
 
 function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
@@ -3221,6 +3236,14 @@ function viewClient(id) {
         <h4>Follow-Up</h4>
         ${dr('Last Contact', c.lastContact)} ${dr('Next Follow-Up', c.nextFollowup)}
         ${dr('Channel', c.followupChannel)} ${dr('Frequency', c.followupFreq)}
+        ${(()=>{
+          const td = new Date().toISOString().split('T')[0];
+          const dp = c.nextFollowup ? Math.floor((Date.parse(td)-Date.parse(c.nextFollowup))/86400000) : -1;
+          const chip = dp >= 2 ? `<span class="overdue-chip hot" style="margin-right:6px;">🔥 ${dp}d overdue</span>`
+                     : dp === 1 ? `<span class="overdue-chip warm" style="margin-right:6px;">⚠️ 1d overdue</span>`
+                     : dp === 0 ? `<span class="overdue-chip due" style="margin-right:6px;">⏰ Due today</span>` : '';
+          return `<div style="margin-top:10px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">${chip}<button class="btn-done btn-done-lg" onclick="markFollowedUp('${id}')">✅ Mark as Followed Up</button></div>`;
+        })()}
       </div>
     </div>
     ${c.orderSpecs ? `<div class="detail-card" style="margin-top:14px;"><h4>Order Specifications</h4><p style="font-size:13px;color:var(--gray-700);line-height:1.6;white-space:pre-wrap;">${esc(c.orderSpecs)}</p></div>` : ''}
@@ -3715,24 +3738,38 @@ function renderFollowupsSection() {
   empty.style.display='none';
   const overdueCount = clients.filter(c=>c.nextFollowup&&c.nextFollowup<today).length;
   document.getElementById('overdue-badge').style.display = overdueCount>0?'inline-block':'none';
-  tbody.innerHTML = rows.map(({c,isOverdue})=>`<tr>
-    <td class="td-name">${esc(c.name)}</td>
-    <td style="font-size:12px;color:var(--gray-500);">${esc(c.company||'—')}</td>
+  tbody.innerHTML = rows.map(({c,isOverdue})=>{
+    const today2 = new Date().toISOString().split('T')[0];
+    const daysPast = c.nextFollowup ? Math.floor((Date.parse(today2) - Date.parse(c.nextFollowup)) / 86400000) : 0;
+    const isToday2 = c.nextFollowup === today2;
+    let overdueChip = '';
+    let rowClass = '';
+    if (daysPast >= 2) {
+      overdueChip = `<span class="overdue-chip hot">🔥 ${daysPast}d overdue</span>`;
+      rowClass = 'escalated-hot';
+    } else if (daysPast === 1) {
+      overdueChip = `<span class="overdue-chip warm">⚠️ 1d overdue</span>`;
+      rowClass = 'escalated-warm';
+    } else if (isToday2) {
+      overdueChip = `<span class="overdue-chip due">⏰ Due today</span>`;
+    }
+    return `<tr>
+    <td class="td-name">${esc(c.name)}<br><span style="font-size:11px;color:var(--gray-400);">${esc(c.company||'')}</span></td>
     <td>${c.followupChannel?`<span class="badge ${getChannelBadgeClass(c.followupChannel)}">${esc(c.followupChannel)}</span>`:'—'}</td>
-    <td class="${isOverdue?'overdue':''}">${c.nextFollowup}${isOverdue?' ⚠️':''}</td>
+    <td><div style="display:flex;flex-direction:column;gap:3px;"><span class="${isOverdue?'overdue':''}" style="font-size:12px;">${c.nextFollowup||'—'}</span>${overdueChip}</div></td>
+    <td><span class="${rowClass}">${getPriorityBadge(c.priority)}</span></td>
     <td>${getStatusBadge(c.status)}</td>
-    <td style="font-size:12px;color:var(--gray-600);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(c.notes||'—')}</td>
-    <td><div class="actions">
+    <td style="font-size:12px;color:var(--gray-600);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(c.notes||'—')}</td>
+    <td><div class="actions" style="gap:4px;">
+      <button class="btn-done" onclick="markFollowedUp('${c.id}')" title="Mark as followed up — logs contact &amp; sets next followup date">✅ Done</button>
       ${c.whatsapp ? `<button class="btn-icon" title="WhatsApp" onclick="openWaModal('${c.id}')" style="background:#dcfce7;color:#15803d;">💬</button>` : ''}
       ${c.email    ? `<button class="btn-icon" title="Email" onclick="openComposeModal('${c.id}')" style="background:#dbeafe;color:#1d4ed8;">✉️</button>` : ''}
       <button class="btn-icon" onclick="viewClient('${c.id}')">
         <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
       </button>
-      <button class="btn-icon" onclick="openClientModal('${c.id}')">
-        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-      </button>
     </div></td>
-  </tr>`).join('');
+  </tr>`;
+  }).join('');
 }
 
 // ==================== RENDER ORDERS ====================
@@ -4154,7 +4191,7 @@ async function runCSVImport() {
         company:         mapped.company         || '',
         country:         mapped.country         || '',
         source:          mapped.source          || 'Other',
-        priority:        mapped.priority        || 'Warm',
+        priority:        mapped.priority        || 'Cold',
         status:          mapped.status          || 'New Lead',
         whatsapp:        mapped.whatsapp        || '',
         email:           mapped.email           || '',
@@ -7385,6 +7422,103 @@ async function initSupabase() {
   }
 }
 
+// ==================== CROSS-TAB SYNC (BroadcastChannel) ====================
+const _crmChannel = (typeof BroadcastChannel !== 'undefined') ? new BroadcastChannel('clientcrm_sync') : null;
+
+function _crmBroadcast(type, payload) {
+  if (_crmChannel) _crmChannel.postMessage({ type, payload });
+}
+
+if (_crmChannel) {
+  _crmChannel.onmessage = e => {
+    if (e.data.type === 'data_changed') {
+      // Re-read latest data from localStorage (written by the other tab's save())
+      clients      = JSON.parse(localStorage.getItem('crm_clients')        || '[]');
+      importBatches= JSON.parse(localStorage.getItem('crm_import_batches') || '[]');
+      _renderAllActiveViews();
+      // No toast — silent refresh so it doesn't distract mid-work
+    }
+  };
+}
+
+function _renderAllActiveViews() {
+  renderDashboard();
+  renderClients();
+  const active = s => document.getElementById('section-'+s)?.classList.contains('active');
+  if (active('pipeline'))      renderKanban();
+  if (active('followups'))     renderFollowupsSection();
+  if (active('orders'))        renderOrders();
+  if (active('reminders'))     renderReminders();
+  if (active('import-batches'))renderImportBatches();
+  updateSidebarStats();
+  updateNavCount();
+}
+
+// ==================== PRIORITY AUTO-ESCALATION ====================
+// Cold → Warm  : once nextFollowup date is reached (0 days overdue)
+// Warm/Cold → Hot : 2+ days overdue without follow-up
+
+function followupFreqToDays(freq) {
+  if (!freq) return 7;
+  const l = freq.toLowerCase();
+  if (/daily|every\s*day/.test(l))          return 1;
+  if (/every\s*2\s*day|two\s*day/.test(l))  return 2;
+  if (/every\s*3\s*day/.test(l))            return 3;
+  if (/bi.?week|every\s*2\s*week|fortnightly/.test(l)) return 14;
+  if (/week/.test(l))                        return 7;
+  if (/month/.test(l))                       return 30;
+  return 7;
+}
+
+function runPriorityEscalation() {
+  const today = new Date().toISOString().split('T')[0];
+  let escalated = 0;
+  clients.forEach(c => {
+    if (!c.nextFollowup) return;
+    const daysPast = Math.floor((Date.parse(today) - Date.parse(c.nextFollowup)) / 86400000);
+    if (daysPast >= 2 && c.priority !== 'Hot') {
+      c.priority = 'Hot'; escalated++;
+    } else if (daysPast >= 0 && c.priority === 'Cold') {
+      c.priority = 'Warm'; escalated++;
+    }
+  });
+  if (escalated > 0) {
+    save();
+    toast(`🔥 ${escalated} lead${escalated > 1 ? 's' : ''} escalated — overdue follow-up${escalated > 1 ? 's' : ''}`, 'success');
+  }
+}
+
+// ==================== MARK AS FOLLOWED UP ====================
+function markFollowedUp(clientId) {
+  const c = clients.find(x => x.id === clientId);
+  if (!c) return;
+  const today   = new Date().toISOString().split('T')[0];
+  const days    = followupFreqToDays(c.followupFreq);
+  const nextDt  = new Date(Date.now() + days * 86400000).toISOString().split('T')[0];
+
+  c.lastContact  = today;
+  c.nextFollowup = nextDt;
+  c.priority     = 'Cold'; // reset escalation clock — we've reconnected
+
+  if (!c.followups) c.followups = [];
+  c.followups.push({
+    id: genId(), channel: c.followupChannel || 'Note', date: today,
+    note: `✅ Followed up. Next follow-up scheduled: ${nextDt}.`
+  });
+
+  save();
+  sbUpsert('crm_clients', c);
+  _crmBroadcast('data_changed');
+
+  _renderAllActiveViews();
+
+  // Refresh open detail modal if it's showing this client
+  const detailModal = document.getElementById('detail-modal');
+  if (detailModal && detailModal.style.display !== 'none') viewClient(clientId);
+
+  toast(`✅ ${c.name} — followed up! Next: ${nextDt}`, 'success');
+}
+
 // ==================== INIT ====================
 rebuildMissingBatches(); // recover any import history orphaned from localStorage clear
 renderDashboard();
@@ -7412,6 +7546,10 @@ initSupabase();
 
 // Templates — populate selects on load
 populateTmplSelects();
+
+// Priority auto-escalation — run on load, then every 10 minutes
+runPriorityEscalation();
+setInterval(runPriorityEscalation, 10 * 60 * 1000);
 
 // Auto show morning report once per day (500ms delay so dashboard renders first)
 setTimeout(() => {
