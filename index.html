@@ -1825,9 +1825,11 @@ create policy "anon all" on crm_suppliers for all using (true) with check (true)
     <div class="wa-editor">
       <textarea id="wa-message-text" placeholder="Type or edit your WhatsApp message here..." oninput="updateWaPreview()"></textarea>
     </div>
-    <div class="modal-footer" style="gap:8px; justify-content:space-between;">
+    <div id="wa-saved-badge" style="display:none;padding:4px 14px;background:#dcfce7;font-size:11px;font-weight:700;color:#15803d;text-align:center;">✅ Message saved for bulk send</div>
+    <div class="modal-footer" style="gap:8px; justify-content:space-between;flex-wrap:wrap;">
       <button class="btn btn-outline btn-sm" onclick="copyWaMessage()">📋 Copy Message</button>
-      <div style="display:flex;gap:8px;">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-sm" style="background:#f0fdf4;color:#15803d;border:1.5px solid #86efac;font-weight:700;" onclick="saveWaMsgForBulk()" title="Save this message to use in Fonnte bulk send">💾 Save for Bulk</button>
         <button class="btn btn-outline" onclick="closeModal('wa-modal')">Cancel</button>
         <button class="btn btn-whatsapp btn-sm" id="wa-send-btn" onclick="sendWhatsApp()">
           💬 Open WhatsApp Web
@@ -2955,10 +2957,34 @@ function ercPreviewTemplate() {
   box.style.display = 'block';
 }
 
+// ── Save current WA textarea message for this client's bulk send ─────────────
+function saveWaMsgForBulk() {
+  const c = clients.find(x => x.id === currentWaClientId);
+  if (!c) return;
+  const msg = (document.getElementById('wa-message-text').value || '').trim();
+  if (!msg) { toast('Message is empty — type something first', 'error'); return; }
+  c._aiGeneratedWaMsg = msg;
+  save();
+  _updateWaSavedBadge(c);
+  toast(`💾 Message saved for ${c.name} — will be used in bulk send`, 'success');
+}
+
+function _updateWaSavedBadge(c) {
+  const badge = document.getElementById('wa-saved-badge');
+  if (!badge) return;
+  if (c && c._aiGeneratedWaMsg) {
+    badge.style.display = 'block';
+    badge.textContent = '✅ Custom message saved — will be used in Fonnte bulk send';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
 // ── WA single modal: apply selected template ──────────────────────────────────
 function waApplySingleTemplate() {
   const sel = document.getElementById('wa-single-template-select');
   const id  = sel ? sel.value : '__auto__';
+  _lastWaTemplateId = id; // remember for next open
   const c   = clients.find(x => x.id === currentWaClientId);
   if (!c) return;
   const msg = id === '__auto__' ? buildWaMessage(c) : (() => {
@@ -4701,7 +4727,8 @@ function showMorningReport(force) {
 }
 
 // ==================== WHATSAPP MESSAGE GENERATOR ====================
-let currentWaClientId = null;
+let currentWaClientId  = null;
+let _lastWaTemplateId  = '__auto__'; // remember last chosen template across opens
 
 function openWaModal(clientId) {
   currentWaClientId = clientId;
@@ -4711,17 +4738,35 @@ function openWaModal(clientId) {
   document.getElementById('wa-avatar-initials').textContent = initials;
   document.getElementById('wa-contact-name').textContent = c.name + (c.company ? ` · ${c.company}` : '');
   document.getElementById('wa-contact-num').textContent  = c.whatsapp || 'No number';
-  // Use AI-generated message if available, otherwise build default
-  const msg = c._aiGeneratedWaMsg || buildWaMessage(c);
+  populateTmplSelects();
+
+  // Restore last selected template, then build message from it
+  const _waSel = document.getElementById('wa-single-template-select');
+  if (_waSel) {
+    _waSel.value = _lastWaTemplateId;
+    // If stored template no longer exists in the list, fall back to auto
+    if (!_waSel.value) { _waSel.value = '__auto__'; _lastWaTemplateId = '__auto__'; }
+  }
+
+  // Priority: saved custom/AI message → selected template → auto
+  let msg;
+  if (c._aiGeneratedWaMsg && (_lastWaTemplateId === '__auto__' || _lastWaTemplateId === '__saved__')) {
+    msg = c._aiGeneratedWaMsg;
+  } else if (_lastWaTemplateId && _lastWaTemplateId !== '__auto__') {
+    const t = templates.find(t => t.id === _lastWaTemplateId && t.type === 'whatsapp');
+    msg = t ? applyTemplate(t.content, c) : buildWaMessage(c);
+  } else {
+    msg = buildWaMessage(c);
+  }
   document.getElementById('wa-message-text').value = msg;
   updateWaPreview();
-  populateTmplSelects();
-  const _waSel = document.getElementById('wa-single-template-select');
-  if (_waSel) _waSel.value = '__auto__';
-  // Show AI badge if message was AI-generated
+
+  // Show saved-for-bulk badge
+  _updateWaSavedBadge(c);
+
   const aiBtn = document.getElementById('wa-ai-generate-btn');
   if (aiBtn) aiBtn.title = c._aiGeneratedWaMsg
-    ? 'AI message loaded — click to regenerate' : 'Generate a personalized message with Google Gemini AI (free)';
+    ? 'AI message loaded — click to regenerate' : 'Generate a personalized AI message';
   openModal('wa-modal');
 }
 
