@@ -5767,6 +5767,7 @@ function rwaGetFilteredList() {
 
 function rwaOnTemplateChange() {
   const box=document.getElementById('rwa-tmpl-preview'); if(box) box.style.display='none';
+  renderRemWaPanel(); // re-render so MESSAGE PREVIEW column reflects the chosen template
 }
 
 function rwaPreviewTemplate() {
@@ -5894,17 +5895,20 @@ function renderRemWaPanel() {
     const priColor=priority==='Hot'?'#dc2626':priority==='Warm'?'#d97706':priority==='Cold'?'#0891b2':'var(--gray-400)';
     const priLabel=priority?`<span style="font-size:10px;font-weight:700;color:${priColor};">${priority}</span>`:'';
     const lastC=c.lastContact?`<span style="font-size:12px;color:var(--gray-600);">${c.lastContact}</span>`:`<span style="font-size:11px;color:var(--gray-300);">—</span>`;
-    const preview=buildWaMessage(c).replace(/\n/g,' ').substring(0,60)+'…';
+    const _rwaMsg    = c._aiGeneratedWaMsg || getRwaMessage(c);
+    const preview    = _rwaMsg.replace(/\n/g,' ').substring(0,60)+'…';
+    const savedBadge = c._aiGeneratedWaMsg
+      ? `<span style="font-size:9px;background:#dcfce7;color:#15803d;border-radius:8px;padding:1px 5px;font-weight:700;margin-left:4px;">✅ saved</span>` : '';
     return `<tr class="erc-row" data-id="${c.id}">
       <td><input type="checkbox" class="rwa-row-check" data-id="${c.id}" onchange="rwaUpdateBulkBar()"></td>
       <td><div class="erc-name">${esc(c.name)}</div>${c.company?`<div class="erc-company">${esc(c.company)}</div>`:''}${priLabel}</td>
       <td><a class="erc-wa-link" href="https://wa.me/${c.whatsapp.replace(/\D/g,'')}" target="_blank">${esc(c.whatsapp)}</a></td>
       <td>${lastC}</td>
       <td>${dueBadge}</td>
-      <td><span class="wab-msg-preview" title="${esc(buildWaMessage(c))}">${esc(preview)}</span></td>
+      <td><span class="wab-msg-preview" title="${esc(_rwaMsg)}">${esc(preview)}</span>${savedBadge}</td>
       <td>
         <button class="btn btn-whatsapp btn-sm" style="font-size:11px;padding:4px 10px;" onclick="rwaSendOne('${c.id}')">💬 Send</button>
-        <button class="btn-icon" style="margin-left:4px;" title="Edit Message" onclick="openWaModal('${c.id}')">✏️</button>
+        <button class="btn btn-sm" style="font-size:11px;padding:4px 8px;background:#f0fdf4;color:#15803d;border:1px solid #86efac;border-radius:6px;font-weight:600;" title="Draft &amp; save custom message for bulk" onclick="openWaModal('${c.id}')">✏️ Draft</button>
         <button class="ai-row-btn" title="AI Generate personalized message" onclick="aiGenerateForRow('${c.id}')">⚡</button>
       </td>
     </tr>`;
@@ -6198,38 +6202,80 @@ function handleAIError(e, retryFn) {
 
 // ── Build prompt for a single client ─────────────────────────────────────────
 function buildAIPrompt(c) {
-  const today = new Date().toISOString().split('T')[0];
+  const today        = new Date().toISOString().split('T')[0];
   const daysSinceLast = c.lastContact
-    ? Math.floor((new Date(today) - new Date(c.lastContact)) / 86400000) : null;
-  const daysOverdue = (c.nextFollowup && c.nextFollowup < today)
-    ? Math.floor((new Date(today) - new Date(c.nextFollowup)) / 86400000) : null;
-  const lines = [
-    `Name: ${c.name}`,
-    c.company  ? `Company: ${c.company}` : null,
-    c.product  ? `Product interest: ${c.product}` : null,
-    c.status   ? `Status: ${c.status}` : null,
-    c.priority ? `Priority: ${c.priority}` : null,
-    c.country  ? `Country: ${c.country}` : null,
-    daysSinceLast !== null ? `Days since last contact: ${daysSinceLast}` : null,
-    daysOverdue  !== null ? `Overdue by: ${daysOverdue} days` : null,
-    c.notes ? `Notes: ${c.notes.substring(0, 200)}` : null,
+    ? Math.floor((Date.parse(today) - Date.parse(c.lastContact)) / 86400000) : null;
+  const daysOverdue  = (c.nextFollowup && c.nextFollowup < today)
+    ? Math.floor((Date.parse(today) - Date.parse(c.nextFollowup)) / 86400000) : null;
+
+  // Stage-specific angle — what matters most at each pipeline stage
+  const stageGuide = {
+    'New Lead':       'First contact. Introduce yourself briefly, reference their specific product interest, and invite them to share their requirements. Make them feel discovered, not cold-called.',
+    'Contacted':      'Already spoken once. Reference your last conversation, show you remember their needs, and move toward a specific next step (sample / quote / call).',
+    'Negotiating':    'Active negotiation. Acknowledge their position, show flexibility or added value, and push gently toward a decision. Keep it confident and professional.',
+    'Sample Sent':    'Sample delivered. Ask specifically about their experience with the sample — quality, fit, fabric feel. Express readiness to adjust based on feedback.',
+    'Order Placed':   'Order confirmed. Reassure them about the timeline and production quality. Share any relevant production update if available.',
+    'In Production':  'Production underway. Give a brief update, maintain confidence, and mention next milestone (QC, shipping date).',
+    'Completed':      'Order delivered. Thank them warmly, ask about satisfaction, and explore repeat order or referral opportunity.',
+  }[c.status] || 'Follow up warmly and move the relationship forward.';
+
+  // Urgency / tone calibration
+  const toneGuide = daysOverdue >= 14 ? `It has been a long time (${daysOverdue} days overdue). Rekindle the relationship naturally — do NOT mention "overdue" or make them feel guilty. Act like picking up a conversation.`
+    : daysOverdue >= 3  ? `Follow-up is ${daysOverdue} days overdue. Be warm and re-engaging. Reference something specific from their profile to show you remember them.`
+    : daysOverdue === 1 || daysOverdue === 2 ? `Slightly overdue follow-up. Keep it light and natural.`
+    : daysSinceLast >= 7 ? `It has been ${daysSinceLast} days since last contact. Friendly check-in tone.`
+    : c.priority === 'Hot' ? 'Hot lead — be prompt, responsive, and show you\'re ready to move fast.'
+    : c.priority === 'Cold' ? 'Cold lead — focus on sparking interest with a specific value point or question.'
+    : 'Standard warm follow-up.';
+
+  // Build rich client profile — use EVERY available data point
+  const profile = [
+    `Full name: ${c.name}`,
+    c.company       ? `Company / Business: ${c.company}` : null,
+    c.country       ? `Country: ${c.country}` : null,
+    c.source        ? `How they found us: ${c.source}` : null,
+    c.product       ? `Product they want: ${c.product}` : null,
+    c.quantity      ? `Order quantity: ${c.quantity} pcs` : null,
+    c.value         ? `Estimated order value: $${Number(c.value).toLocaleString()}` : null,
+    c.unitPrice     ? `Target price per piece: $${c.unitPrice}` : null,
+    c.fabricType    ? `Fabric preference: ${c.fabricType}` : null,
+    c.fabricSupplier? `Fabric supplier: ${c.fabricSupplier}` : null,
+    c.shippingMethod? `Shipping preference: ${c.shippingMethod}` : null,
+    c.shippingAgent ? `Preferred shipping agent: ${c.shippingAgent}` : null,
+    c.status        ? `Pipeline stage: ${c.status}` : null,
+    c.priority      ? `Lead priority: ${c.priority}` : null,
+    c.followupChannel?`Preferred contact channel: ${c.followupChannel}` : null,
+    daysSinceLast !== null ? `Last contacted: ${daysSinceLast} days ago` : null,
+    daysOverdue  !== null  ? `Follow-up overdue by: ${daysOverdue} days` : null,
+    c.orderSpecs    ? `Order specifications: ${c.orderSpecs.substring(0, 250)}` : null,
+    c.notes         ? `Sales notes: ${c.notes.substring(0, 300)}` : null,
   ].filter(Boolean).join('\n');
-  return `You are a professional B2B sales assistant helping write a WhatsApp follow-up message.
 
-Client info:
-${lines}
+  return `You are a B2B sales rep at a garment manufacturing & export company based in China (or similar Asian manufacturing hub). You source and produce clothing for international buyers.
 
-Write a brief, warm, personalized WhatsApp message to this client.
-Rules:
-- Under 150 words
-- Greet them by first name
-- Naturally mention their product or business context if available
-- Tone: friendly and professional — like a trusted partner, not a pushy salesperson
-- End with one clear, easy-to-answer question or call to action
-- Plain text only (no markdown), 1-2 emojis max if natural
-- If they are overdue, gently acknowledge the time gap
+Write a SHORT, highly personalized WhatsApp message for this specific client. Use their REAL data below — every detail matters.
 
-Return ONLY the message. No labels, no subject line, no explanation.`;
+===CLIENT PROFILE===
+${profile}
+
+===WHAT TO DO AT THIS STAGE===
+${stageGuide}
+
+===TONE===
+${toneGuide}
+
+===STRICT RULES===
+- Maximum 100 words
+- Use their FIRST NAME only to greet
+- Mention at least 1-2 SPECIFIC details from their profile (product, quantity, company, country, fabric, etc.)
+- End with exactly ONE simple question or clear next step
+- Sound like a real human, not a template or robot
+- NO markdown, NO asterisks, NO bullet points
+- Maximum 2 emojis, only if they feel natural
+- Do NOT say "I hope this message finds you well" or "I wanted to reach out"
+- Do NOT reveal you are an AI or that you read their profile
+
+Return ONLY the message text. No subject, no labels, no explanation.`;
 }
 
 // ── Generate for single client in WA modal ───────────────────────────────────
