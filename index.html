@@ -2431,19 +2431,25 @@ create policy "anon all" on crm_suppliers for all using (true) with check (true)
           <thead>
             <tr>
               <th>Fabric Name</th>
+              <th>Series</th>
+              <th>Features</th>
               <th>Composition</th>
               <th>Weight (gsm)</th>
               <th>Width (cm)</th>
+              <th>m/kg</th>
               <th>Colors/Pattern</th>
               <th>MOQ (m)</th>
+              <th>Retail Price</th>
+              <th>Wholesale Price</th>
               <th>Price/m (USD)</th>
               <th>Lead Time</th>
+              <th>State</th>
               <th>Notes</th>
               <th>Actions</th>
             </tr>
           </thead>
           <tbody id="catalog-tbody">
-            <tr><td colspan="10" style="text-align:center;padding:32px;color:var(--gray-400);">No catalog items yet. Click + Add Item to get started.</td></tr>
+            <tr><td colspan="16" style="text-align:center;padding:32px;color:var(--gray-400);">No catalog items yet. Click + Add Item to get started.</td></tr>
           </tbody>
         </table>
       </div>
@@ -2471,6 +2477,14 @@ create policy "anon all" on crm_suppliers for all using (true) with check (true)
           <input type="text" id="cat-name" placeholder="e.g. CVC Pique Polo">
         </div>
         <div class="form-group">
+          <label>Series</label>
+          <input type="text" id="cat-series" placeholder="e.g. MH19001">
+        </div>
+        <div class="form-group full">
+          <label>Features / Function</label>
+          <input type="text" id="cat-features" placeholder="e.g. High stretch, breathable, quick dry">
+        </div>
+        <div class="form-group">
           <label>Composition</label>
           <input type="text" id="cat-composition" placeholder="e.g. 60% Cotton 40% Polyester">
         </div>
@@ -2483,6 +2497,10 @@ create policy "anon all" on crm_suppliers for all using (true) with check (true)
           <input type="number" id="cat-width" placeholder="e.g. 150">
         </div>
         <div class="form-group">
+          <label>Meters per kg</label>
+          <input type="text" id="cat-meters-per-kg" placeholder="e.g. 3.3">
+        </div>
+        <div class="form-group">
           <label>Colors / Pattern</label>
           <input type="text" id="cat-colors" placeholder="e.g. White, Black, Navy">
         </div>
@@ -2491,12 +2509,24 @@ create policy "anon all" on crm_suppliers for all using (true) with check (true)
           <input type="number" id="cat-moq" placeholder="e.g. 500">
         </div>
         <div class="form-group">
+          <label>Retail Price</label>
+          <input type="text" id="cat-retail-price" placeholder="e.g. Negotiable">
+        </div>
+        <div class="form-group">
+          <label>Wholesale Price</label>
+          <input type="text" id="cat-wholesale-price" placeholder="e.g. Negotiable">
+        </div>
+        <div class="form-group">
           <label>Price per Meter (USD)</label>
           <input type="number" id="cat-price" placeholder="e.g. 2.50" step="0.01">
         </div>
         <div class="form-group">
           <label>Lead Time (days)</label>
           <input type="number" id="cat-leadtime" placeholder="e.g. 15">
+        </div>
+        <div class="form-group">
+          <label>State / Status</label>
+          <input type="text" id="cat-state" placeholder="e.g. Completed, Active">
         </div>
         <div class="form-group full">
           <label>Notes</label>
@@ -7052,18 +7082,24 @@ function renderCatalogTable(supplierId) {
   const catalog=s.catalog||[];
   const tbody=document.getElementById('catalog-tbody');
   if(!catalog.length){
-    tbody.innerHTML=`<tr><td colspan="10" style="text-align:center;padding:36px;color:var(--gray-400);">No catalog items yet. Click <strong>+ Add Item</strong> to get started.</td></tr>`;
+    tbody.innerHTML=`<tr><td colspan="16" style="text-align:center;padding:36px;color:var(--gray-400);">No catalog items yet. Click <strong>+ Add Item</strong> to get started.</td></tr>`;
     return;
   }
   tbody.innerHTML=catalog.map(item=>`<tr>
     <td style="font-weight:600;">${esc(item.name||'—')}</td>
+    <td style="font-size:12px;">${esc(item.series||'—')}</td>
+    <td style="font-size:12px;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(item.features||'—')}</td>
     <td style="font-size:12px;">${esc(item.composition||'—')}</td>
     <td style="font-size:12px;">${item.weightGsm?item.weightGsm+'gsm':'—'}</td>
     <td style="font-size:12px;">${item.widthCm?item.widthCm+'cm':'—'}</td>
+    <td style="font-size:12px;">${esc(item.metersPerKg||'—')}</td>
     <td style="font-size:12px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(item.colors||'—')}</td>
     <td style="font-size:12px;">${item.moq?Number(item.moq).toLocaleString()+'m':'—'}</td>
+    <td style="font-size:12px;">${esc(item.retailPrice||'—')}</td>
+    <td style="font-size:12px;">${esc(item.wholesalePrice||'—')}</td>
     <td style="font-size:12px;font-weight:600;color:var(--primary);">${item.pricePerMeter?'$'+item.pricePerMeter+'/m':'—'}</td>
     <td style="font-size:12px;">${item.leadTimeDays?item.leadTimeDays+'d':'—'}</td>
+    <td style="font-size:12px;">${item.state?`<span class="badge ${item.state.toLowerCase().includes('complet')?'badge-green':'badge-gray'}">${esc(item.state)}</span>`:'—'}</td>
     <td style="font-size:11px;color:var(--gray-500);max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(item.notes||'—')}</td>
     <td>
       <div class="actions">
@@ -7082,13 +7118,19 @@ function openCatalogItemModal(itemId) {
   document.getElementById('cat-item-edit-id').value=itemId||'';
   document.getElementById('catalog-item-modal-title').textContent=itemId?'Edit Catalog Item':'Add Catalog Item';
   document.getElementById('cat-name').value=item?.name||'';
+  document.getElementById('cat-series').value=item?.series||'';
+  document.getElementById('cat-features').value=item?.features||'';
   document.getElementById('cat-composition').value=item?.composition||'';
   document.getElementById('cat-weight').value=item?.weightGsm||'';
   document.getElementById('cat-width').value=item?.widthCm||'';
+  document.getElementById('cat-meters-per-kg').value=item?.metersPerKg||'';
   document.getElementById('cat-colors').value=item?.colors||'';
   document.getElementById('cat-moq').value=item?.moq||'';
+  document.getElementById('cat-retail-price').value=item?.retailPrice||'';
+  document.getElementById('cat-wholesale-price').value=item?.wholesalePrice||'';
   document.getElementById('cat-price').value=item?.pricePerMeter||'';
   document.getElementById('cat-leadtime').value=item?.leadTimeDays||'';
+  document.getElementById('cat-state').value=item?.state||'';
   document.getElementById('cat-notes').value=item?.notes||'';
   openModal('catalog-item-modal');
 }
@@ -7102,11 +7144,19 @@ function saveCatalogItem() {
   if(!s.catalog) s.catalog=[];
   const editId=document.getElementById('cat-item-edit-id').value;
   const item={
-    id:editId||genId(), name, composition:document.getElementById('cat-composition').value.trim(),
+    id:editId||genId(), name,
+    series:document.getElementById('cat-series').value.trim(),
+    features:document.getElementById('cat-features').value.trim(),
+    composition:document.getElementById('cat-composition').value.trim(),
     weightGsm:document.getElementById('cat-weight').value, widthCm:document.getElementById('cat-width').value,
+    metersPerKg:document.getElementById('cat-meters-per-kg').value.trim(),
     colors:document.getElementById('cat-colors').value.trim(), moq:document.getElementById('cat-moq').value,
+    retailPrice:document.getElementById('cat-retail-price').value.trim(),
+    wholesalePrice:document.getElementById('cat-wholesale-price').value.trim(),
     pricePerMeter:document.getElementById('cat-price').value, currency:'USD',
-    leadTimeDays:document.getElementById('cat-leadtime').value, notes:document.getElementById('cat-notes').value.trim(),
+    leadTimeDays:document.getElementById('cat-leadtime').value,
+    state:document.getElementById('cat-state').value.trim(),
+    notes:document.getElementById('cat-notes').value.trim(),
   };
   if(editId){const idx=s.catalog.findIndex(x=>x.id===editId);if(idx>=0) s.catalog[idx]=item;}
   else{s.catalog.push(item);}
@@ -7134,8 +7184,8 @@ function exportCatalogCSV(supplierId) {
   if(!s){toast('Supplier not found','error');return;}
   const catalog=s.catalog||[];
   if(!catalog.length){toast('No catalog items to export','error');return;}
-  const headers=['Name','Composition','Weight (gsm)','Width (cm)','Colors/Pattern','MOQ (m)','Price/m (USD)','Lead Time (days)','Notes'];
-  const rows=catalog.map(item=>[item.name,item.composition,item.weightGsm,item.widthCm,item.colors,item.moq,item.pricePerMeter,item.leadTimeDays,item.notes].map(v=>`"${String(v||'').replace(/"/g,'""')}"`));
+  const headers=['Name','Series','Features','Composition','Weight (gsm)','Width (cm)','Meters/kg','Colors/Pattern','MOQ (m)','Retail Price','Wholesale Price','Price/m (USD)','Lead Time (days)','State','Notes'];
+  const rows=catalog.map(item=>[item.name,item.series,item.features,item.composition,item.weightGsm,item.widthCm,item.metersPerKg,item.colors,item.moq,item.retailPrice,item.wholesalePrice,item.pricePerMeter,item.leadTimeDays,item.state,item.notes].map(v=>`"${String(v||'').replace(/"/g,'""')}"`));
   const csv=[headers.map(h=>`"${h}"`).join(','),...rows.map(r=>r.join(','))].join('\n');
   download(`catalog_${s.name.replace(/\s/g,'_')}.csv`,csv,'text/csv');
   toast('Catalog exported!','success');
@@ -7155,7 +7205,7 @@ function openCatalogCSVImport(supplierId) {
       const s=suppliers.find(x=>x.id===supplierId);
       if(!s){toast('Supplier not found','error');return;}
       if(!s.catalog) s.catalog=[];
-      const CAT_ALIASES={name:['name','fabric name','item','product'],composition:['composition','content','material','fiber'],weightGsm:['weight','gsm','gram'],widthCm:['width','cm','cuttable width'],colors:['colors','colour','pattern','color'],moq:['moq','minimum'],pricePerMeter:['price','rate','cost','price/m','$/m'],leadTimeDays:['lead time','days','leadtime'],notes:['notes','remarks','description']};
+      const CAT_ALIASES={name:['name','fabric name','item','product','product name','商品名称'],series:['series','系列'],features:['features','function','feature','func','功能','商品功能'],composition:['composition','content','material','fiber','成分','element'],weightGsm:['weight','gsm','gram','克重','weight in grams'],widthCm:['width','cm','cuttable width','幅宽','width cm'],metersPerKg:['meters/kg','meter/kg','m/kg','meters per kg','米/公斤','rice/kg'],colors:['colors','colour','pattern','color'],moq:['moq','minimum'],retailPrice:['retail price','retail','零售价'],wholesalePrice:['wholesale price','wholesale','批发价'],pricePerMeter:['price/m','$/m','price per meter','rate','cost'],leadTimeDays:['lead time','days','leadtime'],state:['state','status','状态'],notes:['notes','remarks','note','comments','description']};
       let added=0;
       rows.forEach(row=>{
         const item={id:genId()};
