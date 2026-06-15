@@ -592,6 +592,39 @@
   .batch-active-pill button { background:none; border:none; cursor:pointer; color:#7c3aed; font-size:14px; line-height:1; padding:0 0 0 4px; }
   #batch-filter-bar { display:none; align-items:center; gap:10px; padding:8px 14px; background:#f5f3ff; border-radius:10px; margin-bottom:10px; }
 
+  /* ===== BOOKSHELF VIEW ===== */
+  .view-toggle { display:inline-flex; background:var(--gray-100); border-radius:10px; padding:3px; gap:2px; }
+  .view-toggle button { background:transparent; border:none; padding:7px 14px; font-size:13px; font-weight:600; color:var(--gray-500); border-radius:7px; cursor:pointer; display:inline-flex; align-items:center; gap:6px; transition:all .15s; }
+  .view-toggle button.active { background:#fff; color:var(--primary); box-shadow:0 1px 3px rgba(0,0,0,.08); }
+  .view-toggle button:hover:not(.active) { color:var(--gray-700); }
+  .shelf { background:#fff; border:1.5px solid var(--gray-200); border-radius:14px; margin-bottom:16px; overflow:hidden; transition:border-color .15s, box-shadow .15s; }
+  .shelf:hover { border-color:#c7d2fe; box-shadow:0 2px 12px rgba(99,102,241,.08); }
+  .shelf-header { display:flex; align-items:center; gap:14px; padding:14px 18px; background:linear-gradient(135deg,#eef2ff,#f5f3ff); cursor:pointer; user-select:none; border-bottom:1px solid transparent; transition:border-color .15s; }
+  .shelf.expanded .shelf-header { border-bottom-color:var(--gray-200); }
+  .shelf-arrow { font-size:12px; color:var(--gray-500); transition:transform .2s; width:14px; text-align:center; }
+  .shelf.expanded .shelf-arrow { transform:rotate(90deg); }
+  .shelf-icon { font-size:22px; line-height:1; }
+  .shelf-title { font-size:15px; font-weight:700; color:var(--gray-700); display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .shelf-count { background:#fff; color:var(--primary); font-size:11px; font-weight:800; padding:3px 9px; border-radius:20px; border:1px solid #c7d2fe; }
+  .shelf-source { font-size:11px; font-weight:700; color:#5b21b6; background:#ede9fe; padding:3px 9px; border-radius:20px; }
+  .shelf-meta { margin-left:auto; display:flex; align-items:center; gap:14px; }
+  .shelf-progress { display:flex; align-items:center; gap:8px; font-size:11px; color:var(--gray-500); font-weight:600; }
+  .shelf-progress-bar { width:100px; height:6px; background:var(--gray-200); border-radius:3px; overflow:hidden; }
+  .shelf-progress-fill { height:100%; background:linear-gradient(90deg,#10b981,#22c55e); transition:width .3s; }
+  .shelf-actions { display:flex; gap:6px; }
+  .shelf-actions button { background:#fff; border:1px solid var(--gray-200); color:var(--gray-600); border-radius:7px; padding:4px 10px; font-size:11px; font-weight:600; cursor:pointer; transition:all .15s; }
+  .shelf-actions button:hover { background:var(--primary); color:#fff; border-color:var(--primary); }
+  .shelf-body { display:none; padding:0; }
+  .shelf.expanded .shelf-body { display:block; }
+  .shelf-body table { width:100%; border-collapse:collapse; }
+  .shelf-body table th { background:var(--gray-50); font-size:11px; font-weight:700; color:var(--gray-500); text-transform:uppercase; letter-spacing:.5px; padding:10px 14px; text-align:left; border-bottom:1px solid var(--gray-200); }
+  .shelf-body table td { padding:12px 14px; border-bottom:1px solid var(--gray-100); font-size:13px; vertical-align:middle; }
+  .shelf-body table tr:last-child td { border-bottom:none; }
+  .shelf-body table tr:hover { background:#fafbff; }
+  .shelf-empty-msg { padding:16px; text-align:center; color:var(--gray-400); font-size:13px; }
+  .shelf-group-by { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--gray-500); font-weight:600; }
+  .shelf-group-by select { background:#fff; border:1.5px solid var(--gray-200); border-radius:8px; padding:6px 10px; font-size:12px; font-weight:600; color:var(--gray-700); cursor:pointer; }
+
   /* ===== AI GENERATE MESSAGES ===== */
   .ai-btn { background:linear-gradient(135deg,#7c3aed,#6366f1); color:white; border:none; border-radius:8px; padding:6px 14px; font-size:12px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; gap:5px; transition:opacity .2s,transform .15s; white-space:nowrap; }
   .ai-btn:hover { opacity:.88; transform:translateY(-1px); }
@@ -945,7 +978,33 @@
         </span>
         <span style="font-size:12px;color:var(--gray-500);" id="batch-filter-count"></span>
       </div>
-      <div class="card">
+      <!-- View toggle + group-by (Bookshelf only) -->
+      <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px;flex-wrap:wrap;">
+        <div class="view-toggle" role="tablist" aria-label="Client view">
+          <button id="view-btn-table" class="active" onclick="switchClientsView('table')">📋 Table</button>
+          <button id="view-btn-shelf" onclick="switchClientsView('bookshelf')">📚 Bookshelf</button>
+        </div>
+        <div id="shelf-controls" style="display:none;align-items:center;gap:12px;">
+          <span class="shelf-group-by">Group by
+            <select id="shelf-group-select" onchange="renderClients()">
+              <option value="day">Day</option>
+              <option value="week">Week</option>
+              <option value="month">Month</option>
+              <option value="batch">Import batch</option>
+              <option value="source">Source</option>
+            </select>
+          </span>
+          <span class="shelf-group-by">Sort
+            <select id="shelf-sort-select" onchange="renderClients()">
+              <option value="newest">Newest first</option>
+              <option value="oldest">Oldest first</option>
+            </select>
+          </span>
+          <button class="btn btn-outline btn-sm" onclick="toggleAllShelves(true)">Expand all</button>
+          <button class="btn btn-outline btn-sm" onclick="toggleAllShelves(false)">Collapse all</button>
+        </div>
+      </div>
+      <div class="card" id="clients-table-view">
         <div class="table-wrap">
           <table>
             <thead>
@@ -971,6 +1030,7 @@
           <p>Try adjusting your filters or add a new client.</p>
         </div>
       </div>
+      <div id="clients-shelf-view" style="display:none;"></div>
     </section>
 
     <!-- PIPELINE (KANBAN) -->
@@ -3424,11 +3484,87 @@ function saveSupplier() {
 }
 
 // ==================== RENDER CLIENTS ====================
+let _clientsView = (localStorage.getItem('clientsView')||'table');
+let _expandedShelves = JSON.parse(localStorage.getItem('expandedShelves')||'{}');
+function switchClientsView(v) {
+  _clientsView = v;
+  localStorage.setItem('clientsView', v);
+  document.getElementById('view-btn-table').classList.toggle('active', v==='table');
+  document.getElementById('view-btn-shelf').classList.toggle('active', v==='bookshelf');
+  document.getElementById('clients-table-view').style.display = v==='table' ? '' : 'none';
+  document.getElementById('clients-shelf-view').style.display = v==='bookshelf' ? '' : 'none';
+  document.getElementById('shelf-controls').style.display = v==='bookshelf' ? 'flex' : 'none';
+  renderClients();
+}
+function toggleShelf(key) {
+  _expandedShelves[key] = !_expandedShelves[key];
+  localStorage.setItem('expandedShelves', JSON.stringify(_expandedShelves));
+  const el = document.getElementById('shelf-' + key);
+  if (el) el.classList.toggle('expanded', !!_expandedShelves[key]);
+}
+function toggleAllShelves(expand) {
+  document.querySelectorAll('#clients-shelf-view .shelf').forEach(el => {
+    const key = el.id.replace('shelf-','');
+    _expandedShelves[key] = !!expand;
+    el.classList.toggle('expanded', !!expand);
+  });
+  localStorage.setItem('expandedShelves', JSON.stringify(_expandedShelves));
+}
+function getShelfKey(c, groupBy) {
+  if (groupBy === 'batch') return c.importBatch || 'manual';
+  if (groupBy === 'source') return normalizeSrc(c.source||'Other');
+  const d = c.importedAt || c.addedAt || c.createdAt;
+  if (!d) return 'manual';
+  const dt = new Date(d);
+  if (isNaN(dt)) return 'manual';
+  if (groupBy === 'month') return dt.toISOString().slice(0,7);
+  if (groupBy === 'week') {
+    const tmp = new Date(Date.UTC(dt.getFullYear(), dt.getMonth(), dt.getDate()));
+    const day = tmp.getUTCDay() || 7; tmp.setUTCDate(tmp.getUTCDate() + 4 - day);
+    const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(),0,1));
+    const wk = Math.ceil((((tmp - yearStart) / 86400000) + 1) / 7);
+    return tmp.getUTCFullYear() + '-W' + String(wk).padStart(2,'0');
+  }
+  return dt.toISOString().slice(0,10); // day
+}
+function getShelfLabel(key, groupBy) {
+  if (key === 'manual') return '✍️ Manually added';
+  if (groupBy === 'batch') {
+    const b = importBatches.find(x => x.id === key);
+    return b ? `📦 ${b.date} ${b.time||''} · ${b.fileName||'Import'}` : '📦 Import';
+  }
+  if (groupBy === 'source') return key;
+  if (groupBy === 'month') {
+    const [y,m] = key.split('-');
+    return new Date(+y, +m-1, 1).toLocaleDateString('en-US',{year:'numeric',month:'long'});
+  }
+  if (groupBy === 'week') return 'Week ' + key.split('-W')[1] + ', ' + key.split('-W')[0];
+  // day
+  const dt = new Date(key + 'T00:00:00');
+  const today = new Date(); today.setHours(0,0,0,0);
+  const diff = Math.round((today - dt) / 86400000);
+  const human = dt.toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  if (diff === 0) return 'Today · ' + human;
+  if (diff === 1) return 'Yesterday · ' + human;
+  if (diff > 1 && diff < 7) return `${diff} days ago · ${human}`;
+  return human;
+}
 function renderClients() {
   const search = (document.getElementById('search-input')||{}).value||'';
   const src  = (document.getElementById('filter-source')||{}).value||'';
   const stat = (document.getElementById('filter-status')||{}).value||'';
   const prio = (document.getElementById('filter-priority')||{}).value||'';
+  // Sync view-toggle UI on first render
+  const tableView = document.getElementById('clients-table-view');
+  const shelfView = document.getElementById('clients-shelf-view');
+  const shelfCtrls = document.getElementById('shelf-controls');
+  if (tableView && shelfView) {
+    tableView.style.display = _clientsView==='table' ? '' : 'none';
+    shelfView.style.display = _clientsView==='bookshelf' ? '' : 'none';
+    if (shelfCtrls) shelfCtrls.style.display = _clientsView==='bookshelf' ? 'flex' : 'none';
+    const tb = document.getElementById('view-btn-table'); if (tb) tb.classList.toggle('active', _clientsView==='table');
+    const sb = document.getElementById('view-btn-shelf'); if (sb) sb.classList.toggle('active', _clientsView==='bookshelf');
+  }
   let filtered = clients.filter(c => {
     const q = search.toLowerCase();
     const matchSearch = !q || [c.name,c.company,c.country,c.email,c.product,c.fabricSupplier].some(v => v&&v.toLowerCase().includes(q));
@@ -3438,6 +3574,7 @@ function renderClients() {
     const matchBatch = !_activeBatchId || c.importBatch === _activeBatchId;
     return matchSearch && matchSrc && matchStat && matchPrio && matchBatch;
   });
+  if (_clientsView === 'bookshelf') return renderClientsBookshelf(filtered);
   const tbody = document.getElementById('clients-tbody');
   const empty = document.getElementById('clients-empty');
   if (!filtered.length) { tbody.innerHTML=''; empty.style.display='block'; return; }
@@ -3488,6 +3625,122 @@ function renderClients() {
       </td>
     </tr>`;
   }).join('');
+}
+
+function renderClientsBookshelf(filtered) {
+  const container = document.getElementById('clients-shelf-view');
+  if (!container) return;
+  if (!filtered.length) {
+    container.innerHTML = `<div class="empty-state" style="background:#fff;border-radius:14px;border:1.5px solid var(--gray-200);">
+      <svg width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+      <h3>No clients found</h3>
+      <p>Try adjusting your filters or add a new client.</p>
+    </div>`;
+    return;
+  }
+  const groupBy = (document.getElementById('shelf-group-select')||{}).value || 'day';
+  const sort    = (document.getElementById('shelf-sort-select')||{}).value || 'newest';
+  const today   = new Date().toISOString().split('T')[0];
+  // Group
+  const groups = {};
+  filtered.forEach(c => {
+    const k = getShelfKey(c, groupBy);
+    (groups[k] = groups[k] || []).push(c);
+  });
+  // Sort keys
+  let keys = Object.keys(groups);
+  if (groupBy === 'source') {
+    keys.sort();
+  } else {
+    keys.sort((a,b) => {
+      if (a === 'manual') return 1;
+      if (b === 'manual') return -1;
+      return sort === 'newest' ? b.localeCompare(a) : a.localeCompare(b);
+    });
+  }
+  container.innerHTML = keys.map(key => {
+    const items = groups[key];
+    const isExpanded = _expandedShelves[key] !== false; // default open
+    // Progress: clients with status beyond "New Lead"
+    const contacted = items.filter(c => c.status && c.status !== 'New Lead').length;
+    const pct = items.length ? Math.round(contacted * 100 / items.length) : 0;
+    // Source pill (mode of source)
+    let sourcePill = '';
+    if (groupBy !== 'source') {
+      const srcCounts = {};
+      items.forEach(c => { const s = normalizeSrc(c.source||'Other'); srcCounts[s] = (srcCounts[s]||0)+1; });
+      const topSrc = Object.entries(srcCounts).sort((a,b)=>b[1]-a[1])[0];
+      if (topSrc) sourcePill = `<span class="shelf-source">${esc(topSrc[0])}</span>`;
+    }
+    const safeKey = key.replace(/[^a-zA-Z0-9_-]/g,'_');
+    const rows = items.map(c => {
+      const isOverdue = c.nextFollowup && c.nextFollowup < today;
+      return `<tr>
+        <td>
+          <div class="td-name">${esc(c.name)}</div>
+          <div class="td-company" style="font-size:11px;color:var(--gray-500);">${esc(c.company||'')}${c.country?' · '+esc(c.country):''}</div>
+        </td>
+        <td>${getSourceBadge(c.source)}</td>
+        <td><div class="channel-icons">${(c.channels||[]).map(ch=>getChannelIcon(ch)).join('')}</div></td>
+        <td>${getStatusBadge(c.status)}</td>
+        <td>${getPrioBadge(c.priority)}</td>
+        <td style="font-size:12px;" class="${isOverdue?'overdue':''}">${c.nextFollowup||'—'}${isOverdue?' ⚠️':''}</td>
+        <td style="font-size:13px;font-weight:600;color:var(--primary);">${c.value?'$'+Number(c.value).toLocaleString():'—'}</td>
+        <td>
+          <div class="actions">
+            ${c.whatsapp ? `<button class="btn-icon" title="WhatsApp" onclick="openWaModal('${c.id}')" style="background:#dcfce7;color:#15803d;">💬</button>` : ''}
+            ${c.email ? `<button class="btn-icon" title="Email" onclick="openComposeModal('${c.id}')" style="background:#dbeafe;color:#1d4ed8;">✉</button>` : ''}
+            <button class="btn-icon" title="View" onclick="viewClient('${c.id}')">👁</button>
+            <button class="btn-icon" title="Edit" onclick="openClientModal('${c.id}')">✎</button>
+          </div>
+        </td>
+      </tr>`;
+    }).join('');
+    return `<div class="shelf ${isExpanded?'expanded':''}" id="shelf-${safeKey}">
+      <div class="shelf-header" onclick="toggleShelf('${safeKey}')">
+        <span class="shelf-arrow">▶</span>
+        <span class="shelf-icon">📚</span>
+        <div class="shelf-title">
+          ${esc(getShelfLabel(key, groupBy))}
+          <span class="shelf-count">${items.length} ${items.length===1?'client':'clients'}</span>
+          ${sourcePill}
+        </div>
+        <div class="shelf-meta">
+          <div class="shelf-progress" title="${contacted} of ${items.length} contacted">
+            <div class="shelf-progress-bar"><div class="shelf-progress-fill" style="width:${pct}%"></div></div>
+            <span>${pct}%</span>
+          </div>
+          <div class="shelf-actions" onclick="event.stopPropagation()">
+            <button onclick="filterShelfOnly('${safeKey}','${key.replace(/'/g,"\\'")}','${groupBy}')" title="Show only this shelf">Focus</button>
+          </div>
+        </div>
+      </div>
+      <div class="shelf-body">
+        <table>
+          <thead><tr>
+            <th>Client</th><th>Source</th><th>Channels</th><th>Status</th><th>Priority</th><th>Next Followup</th><th>Order Value</th><th>Actions</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function filterShelfOnly(safeKey, key, groupBy) {
+  // Filter clients down to just this shelf by hooking into the batch filter if available
+  if (groupBy === 'batch' && key !== 'manual') {
+    filterClientsByBatch(key);
+    return;
+  }
+  // Otherwise collapse all other shelves
+  document.querySelectorAll('#clients-shelf-view .shelf').forEach(el => {
+    const k = el.id.replace('shelf-','');
+    const open = (k === safeKey);
+    _expandedShelves[k] = open;
+    el.classList.toggle('expanded', open);
+  });
+  localStorage.setItem('expandedShelves', JSON.stringify(_expandedShelves));
 }
 
 // ==================== RENDER DASHBOARD ====================
